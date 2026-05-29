@@ -6,13 +6,14 @@ imports nothing from the project; all other modules may safely import from
 it without creating circular dependencies.
 
 Classes:
-    CookingTime  Structured cooking duration (display string + minutes).
-    Recipe       Canonical representation of a single saved recipe.
+    CookingTime    Structured cooking duration (display string + minutes).
+    RecipeContent  Full recipe content parsed from the individual recipe page.
+    Recipe         Canonical representation of a single saved recipe.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 
@@ -66,6 +67,79 @@ class CookingTime:
 
 
 # ---------------------------------------------------------------------------
+# RecipeContent
+# ---------------------------------------------------------------------------
+
+@dataclass
+class RecipeContent:
+    """
+    Full recipe content parsed from an individual NYT Cooking recipe page.
+
+    Populated by a second HTTP pass after the recipe-box metadata export.
+    All fields default to empty/None so that partial parsing never raises.
+
+    Attributes:
+        description:       Recipe introduction text.
+        ingredients:       Ordered list of ingredient strings.
+        preparation_steps: Ordered list of method step strings.
+        yield_:            Serving size from the recipe page (may differ from
+                           the recipe-box value).
+        total_time:        ISO 8601 duration string (e.g. "PT1H30M").
+        prep_time:         ISO 8601 prep-time duration string.
+        cook_time:         ISO 8601 cook-time duration string.
+        nutrition:         Key/value nutrition facts (keys are schema.org
+                           NutritionInformation property names).
+        keywords:          List of editorial keyword strings.
+        categories:        Recipe category labels.
+        cuisine:           Cuisine labels.
+        method:            Cooking method label (e.g. "Baking").
+        image_urls:        List of image URL strings from the page.
+        source_url:        Canonical URL as declared in the structured data.
+        date_published:    ISO 8601 date string.
+        date_modified:     ISO 8601 date string.
+    """
+
+    description: str = ""
+    ingredients: list[str] = field(default_factory=list)
+    preparation_steps: list[str] = field(default_factory=list)
+    yield_: str = ""
+    total_time: str = ""
+    prep_time: str = ""
+    cook_time: str = ""
+    nutrition: dict[str, str] = field(default_factory=dict)
+    keywords: list[str] = field(default_factory=list)
+    categories: list[str] = field(default_factory=list)
+    cuisine: list[str] = field(default_factory=list)
+    method: str = ""
+    image_urls: list[str] = field(default_factory=list)
+    source_url: str = ""
+    date_published: str = ""
+    date_modified: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict[str, object]) -> "RecipeContent":
+        """Reconstruct a RecipeContent from the exported JSON dict."""
+        return cls(
+            description=str(d.get("description", "")),
+            ingredients=list(d.get("ingredients") or []),
+            preparation_steps=list(d.get("preparation_steps") or []),
+            yield_=str(d.get("yield_", "")),
+            total_time=str(d.get("total_time", "")),
+            prep_time=str(d.get("prep_time", "")),
+            cook_time=str(d.get("cook_time", "")),
+            nutrition=dict(d.get("nutrition") or {}),
+            keywords=list(d.get("keywords") or []),
+            categories=list(d.get("categories") or []),
+            cuisine=list(d.get("cuisine") or []),
+            method=str(d.get("method", "")),
+            image_urls=list(d.get("image_urls") or []),
+            source_url=str(d.get("source_url", "")),
+            date_published=str(d.get("date_published", "")),
+            date_modified=str(d.get("date_modified", "")),
+        )
+
+
+# ---------------------------------------------------------------------------
 # Recipe
 # ---------------------------------------------------------------------------
 
@@ -111,6 +185,7 @@ class Recipe:
     has_video: bool
     published_at_ms: Optional[int]
     image_credit: str
+    content: Optional[RecipeContent] = None
 
     @classmethod
     def from_api(cls, r: dict[str, object]) -> "Recipe":
@@ -160,6 +235,7 @@ class Recipe:
         disambiguated, `published_at_ms` is already converted, and
         `image_credit` is flattened.
         """
+        content_data = r.get("content")
         return cls(
             id=int(r["id"]),
             name=(str(r.get("name") or "")).strip(),
@@ -175,6 +251,7 @@ class Recipe:
             has_video=bool(r.get("has_video", False)),
             published_at_ms=int(r["published_at_ms"]) if r.get("published_at_ms") is not None else None,
             image_credit=str(r.get("image_credit", "")),
+            content=RecipeContent.from_dict(content_data) if isinstance(content_data, dict) else None,
         )
 
     def to_flat_dict(self) -> dict[str, object]:

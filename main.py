@@ -69,6 +69,18 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory to write output files (overrides OUTPUT_DIR)",
     )
     parser.add_argument(
+        "--metadata-only",
+        action="store_true",
+        help="Export recipe-box metadata only; skip fetching individual recipe pages",
+    )
+    parser.add_argument(
+        "--content-delay",
+        type=float,
+        default=None,
+        metavar="SECONDS",
+        help="Seconds between recipe page requests (default: NYT_REQUEST_DELAY)",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -113,12 +125,24 @@ def main() -> None:
     log.info("Writing output to %s", out_dir.resolve())
 
     try:
-        result: ExportResult = export(config, out_dir)
+        result: ExportResult = export(
+            config,
+            out_dir,
+            include_content=not args.metadata_only,
+            content_delay=args.content_delay,
+        )
     except AuthenticationError as exc:
         log.error("Authentication error: %s", exc)
         sys.exit(1)
 
-    print(f"Exported {len(result.recipes)} recipes → {out_dir.resolve()}")
+    with_content: int = sum(1 for r in result.recipes if r.content is not None)
+    if args.metadata_only:
+        print(f"Exported {len(result.recipes)} recipes (metadata only) → {out_dir.resolve()}")
+    else:
+        print(
+            f"Exported {len(result.recipes)} recipes "
+            f"({with_content} with full content) → {out_dir.resolve()}"
+        )
 
 
 if __name__ == "__main__":

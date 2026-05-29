@@ -193,6 +193,42 @@ class NYTCookingClient:
         log.debug("Verifying NYT Cooking authentication.")
         self._fetch_page(page=1, per_page=1)
 
+    def fetch_recipe_page(self, url: str) -> str:
+        """
+        Fetch the HTML source of a single NYT Cooking recipe page.
+
+        Reuses the existing authenticated session so the NYT-S cookie is sent
+        automatically.  The accept header is overridden to request HTML rather
+        than JSON.
+
+        Args:
+            url: Canonical recipe URL, e.g. as stored in Recipe.url.
+
+        Returns:
+            The full HTML source of the recipe page as a UTF-8 string.
+
+        Raises:
+            AuthenticationError: If the server returns HTTP 401 or 403.
+            requests.HTTPError:  If the server returns a non-2xx status.
+            requests.Timeout:    If the server does not respond within
+                                 config.timeout seconds.
+        """
+        response = self._session.get(
+            url,
+            headers={"accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"},
+            timeout=self._config.timeout,
+        )
+        try:
+            response.raise_for_status()
+        except HTTPError as exc:
+            if response.status_code in (401, 403):
+                raise AuthenticationError(
+                    "NYT authentication failed fetching recipe page. "
+                    "Refresh NYT_S_COOKIE from your browser session."
+                ) from exc
+            raise
+        return response.text
+
     def iter_saved_recipes(self) -> Iterator[dict[str, object]]:
         """
         Yield raw recipe dicts from the API, paginating automatically.

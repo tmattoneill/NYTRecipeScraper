@@ -11,19 +11,24 @@ Imports:
     models.Recipe  — the domain type being serialised.
     client.NYTCookingClient  — fetches raw API data.
     config.ClientConfig      — passed through to the client.
+    parser.parse_recipe_content — extracts content from recipe HTML.
 """
 
 from __future__ import annotations
 
 import csv
+import dataclasses
 import json
 import logging
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Optional
 
 from client import NYTCookingClient
 from config import ClientConfig
 from models import Recipe
+from parser import parse_recipe_content
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -123,7 +128,12 @@ class ExportResult:
 # Convenience function
 # ---------------------------------------------------------------------------
 
-def export(config: ClientConfig, out_dir: Path) -> ExportResult:
+def export(
+    config: ClientConfig,
+    out_dir: Path,
+    include_content: bool = True,
+    content_delay: Optional[float] = None,
+) -> ExportResult:
     """
     Fetch all saved recipes and write them to `out_dir`.
 
@@ -132,8 +142,13 @@ def export(config: ClientConfig, out_dir: Path) -> ExportResult:
     individually.
 
     Args:
-        config:  Fully populated ClientConfig instance.
-        out_dir: Directory in which to write output files.
+        config:          Fully populated ClientConfig instance.
+        out_dir:         Directory in which to write output files.
+        include_content: When True (default), fetch each recipe's individual
+                         page and attach parsed RecipeContent.  Set False for
+                         a fast metadata-only export.
+        content_delay:   Seconds to sleep between per-recipe page requests.
+                         Defaults to config.request_delay when None.
 
     Returns:
         An ExportResult containing all fetched and parsed Recipe instances.
@@ -145,6 +160,26 @@ def export(config: ClientConfig, out_dir: Path) -> ExportResult:
     recipes: list[Recipe] = [
         Recipe.from_api(raw) for raw in client.iter_saved_recipes()
     ]
+
+    if include_content:
+        delay: float = content_delay if content_delay is not None else config.request_delay
+        total: int = len(recipes)
+        for i, recipe in enumerate(recipes):
+            if not recipe.url:
+                continue
+            log.info("Fetching content %d/%d: %s", i + 1, total, recipe.name)
+            try:
+                html: str = client.fetch_recipe_page(recipe.url)
+                content = parse_recipe_content(html, recipe.url)
+                recipes[i] = dataclasses.replace(recipe, content=content)
+            except Exception as exc:
+                log.warning(
+                    "Could not fetch content for '%s' (%s): %s",
+                    recipe.name, recipe.url, exc,
+                )
+            if i < total - 1:
+                time.sleep(delay)
+
     result: ExportResult = ExportResult(recipes=recipes)
     result.write(out_dir)
     return result
