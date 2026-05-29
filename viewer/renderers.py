@@ -23,14 +23,17 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from models import Recipe
+from models import Recipe, RecipeContent
 from viewer.formatting import (
     ACCENT,
     DIM,
     format_cooking_time,
+    format_ingredient_list,
     format_kicker,
+    format_nutrition_table,
     format_published_date,
     format_star_rating,
+    format_step_list,
 )
 
 # Singleton console shared across the viewer package.  Defined here and
@@ -116,13 +119,20 @@ def render_list(recipes: list[Recipe], query: str) -> list[Recipe]:
 
 def render_detail(recipe: Recipe) -> None:
     """
-    Print a three-panel detail view for a single recipe.
+    Print a detail view for a single recipe.
 
     Layout:
         Panel 1  Title and kicker badge.
         Panel 2  Two-column metadata grid: cooking info (left) and
                  publication info (right).
-        Panel 3  Clickable URL (supported in iTerm2 and most modern terminals).
+        Panel 3  Description, when present in recipe.content.
+        Panel 4  Ingredients, when present in recipe.content.
+        Panel 5  Method (preparation steps), when present in recipe.content.
+        Panel 6  Nutrition facts, when present in recipe.content.
+        Panel 7  Clickable URL (supported in iTerm2 and most modern terminals).
+
+    Content panels (3\u20136) are omitted entirely when recipe.content is None,
+    which occurs when the export was run with --metadata-only.
 
     Args:
         recipe: The Recipe instance to display.
@@ -153,7 +163,7 @@ def render_detail(recipe: Recipe) -> None:
     if recipe.image_credit:
         right.add_row("Photo", recipe.image_credit)
 
-    # Panel 3: clickable URL
+    # URL panel \u2014 always last
     url_text: Text = Text()
     url_text.append(recipe.url, style=f"link {recipe.url} underline {ACCENT}")
 
@@ -162,5 +172,33 @@ def render_detail(recipe: Recipe) -> None:
                         border_style=ACCENT, padding=(0, 1)))
     console.print(Panel(Columns([left, right]),
                         border_style=DIM,    padding=(0, 1)))
+
+    content: Optional[RecipeContent] = recipe.content
+    if content is not None:
+        if content.description:
+            console.print(Panel(
+                Text(content.description, style="white"),
+                title=f"[{DIM}]About[/]",
+                border_style=DIM, padding=(0, 1),
+            ))
+        if content.ingredients:
+            console.print(Panel(
+                format_ingredient_list(content.ingredients),
+                title=f"[bold {ACCENT}]Ingredients[/]",
+                border_style=DIM, padding=(0, 1),
+            ))
+        if content.preparation_steps:
+            console.print(Panel(
+                format_step_list(content.preparation_steps),
+                title=f"[bold {ACCENT}]Method[/]",
+                border_style=DIM, padding=(0, 1),
+            ))
+        if content.nutrition:
+            console.print(Panel(
+                format_nutrition_table(content.nutrition),
+                title=f"[{DIM}]Nutrition[/]",
+                border_style=DIM, padding=(0, 1),
+            ))
+
     console.print(Panel(url_text, title=f"[{DIM}]URL[/]",
-                        border_style=DIM,    padding=(0, 1)))
+                        border_style=DIM, padding=(0, 1)))

@@ -14,9 +14,11 @@ Constants:
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
+from rich.table import Table
 from rich.text import Text
 
 from models import CookingTime
@@ -128,3 +130,101 @@ def format_published_date(published_at_ms: Optional[int]) -> str:
         published_at_ms / 1000, tz=timezone.utc
     )
     return dt.strftime("%-d %B %Y")
+
+
+# ---------------------------------------------------------------------------
+# Recipe content formatters
+# ---------------------------------------------------------------------------
+
+# Human-readable labels for schema.org NutritionInformation property names.
+_NUTRITION_LABELS: dict[str, str] = {
+    "calories":             "Calories",
+    "fatContent":           "Fat",
+    "saturatedFatContent":  "Saturated fat",
+    "unsaturatedFatContent":"Unsaturated fat",
+    "transFatContent":      "Trans fat",
+    "carbohydrateContent":  "Carbohydrates",
+    "sugarContent":         "Sugar",
+    "fiberContent":         "Fibre",
+    "proteinContent":       "Protein",
+    "sodiumContent":        "Sodium",
+    "cholesterolContent":   "Cholesterol",
+}
+
+
+def _nutrition_label(key: str) -> str:
+    """Return a readable label for a schema.org nutrition property name."""
+    if key in _NUTRITION_LABELS:
+        return _NUTRITION_LABELS[key]
+    # camelCase \u2192 "Title Case Words" for any unknown key.
+    return re.sub(r"([A-Z])", r" \1", key).strip().title()
+
+
+def format_ingredient_list(ingredients: list[str]) -> Text:
+    """
+    Render an ordered list of ingredient strings as a bulleted Rich Text.
+
+    Each ingredient is prefixed with a bullet in the accent colour.  Returns
+    an empty Text when the list is empty so callers can include the result
+    unconditionally.
+
+    Args:
+        ingredients: Ordered list of ingredient strings from RecipeContent.
+
+    Returns:
+        A Rich Text object with one ingredient per line.
+    """
+    text: Text = Text()
+    for i, ingredient in enumerate(ingredients):
+        if i > 0:
+            text.append("\n")
+        text.append("\u2022 ", style=ACCENT)
+        text.append(ingredient, style="white")
+    return text
+
+
+def format_step_list(steps: list[str]) -> Text:
+    """
+    Render an ordered list of preparation steps as a numbered Rich Text.
+
+    Each step number is rendered in the accent colour and bold.  Steps are
+    separated by a blank line to aid readability when steps are long.  Returns
+    an empty Text when the list is empty.
+
+    Args:
+        steps: Ordered list of preparation-step strings from RecipeContent.
+
+    Returns:
+        A Rich Text object with one numbered step per paragraph.
+    """
+    text: Text = Text()
+    for i, step in enumerate(steps, start=1):
+        if i > 1:
+            text.append("\n\n")
+        text.append(f"{i}. ", style=f"bold {ACCENT}")
+        text.append(step, style="white")
+    return text
+
+
+def format_nutrition_table(nutrition: dict[str, str]) -> Table:
+    """
+    Render a nutrition facts dict as a two-column Rich Table.
+
+    Keys are schema.org NutritionInformation property names (e.g.
+    "fatContent"); they are converted to readable labels via
+    _nutrition_label().  The table has no header row or border so it
+    sits cleanly inside a Panel.
+
+    Args:
+        nutrition: Mapping of property name to value string from
+                   RecipeContent.nutrition.
+
+    Returns:
+        A borderless Rich Table with label and value columns.
+    """
+    table: Table = Table(box=None, show_header=False, padding=(0, 1))
+    table.add_column("key",   style=DIM,     no_wrap=True)
+    table.add_column("value", style="white")
+    for key, value in nutrition.items():
+        table.add_row(_nutrition_label(key), value)
+    return table
