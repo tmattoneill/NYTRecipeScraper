@@ -19,7 +19,7 @@ import time
 from typing import Iterator, Optional
 from urllib.parse import urljoin
 
-from requests import Session
+from requests import HTTPError, Session
 
 from config import ClientConfig
 
@@ -65,6 +65,10 @@ _MAX_PAGES: int = 10_000
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
+
+class AuthenticationError(RuntimeError):
+    """Raised when NYT Cooking rejects the configured session credentials."""
+
 
 class NYTCookingClient:
     """
@@ -126,12 +130,18 @@ class NYTCookingClient:
         )
         return s
 
-    def _fetch_page(self, page: int) -> dict[str, object]:
+    def _fetch_page(
+        self,
+        page: int,
+        per_page: Optional[int] = None,
+    ) -> dict[str, object]:
         """
         Request a single page of recipe-box results from the API.
 
         Args:
             page: 1-based page number to request.  The API is 1-indexed.
+            per_page: Optional page size override.  Used by verify_auth() to
+                      probe the same endpoint with minimal data transfer.
 
         Returns:
             The decoded JSON payload as a dict.  Relevant keys:
@@ -140,13 +150,14 @@ class NYTCookingClient:
                                     page only; may be absent).
 
         Raises:
+            AuthenticationError: If the server returns HTTP 401 or 403.
             requests.HTTPError: If the server returns a non-2xx status.
             requests.Timeout:   If the server does not respond within
                                 config.timeout seconds.
         """
         params: dict[str, object] = {
             "q": "",
-            "per_page": self._config.per_page,
+            "per_page": per_page or self._config.per_page,
             "page": page,
             "include_crops": ",".join(_CROP_SIZES),
         }
@@ -155,8 +166,32 @@ class NYTCookingClient:
             params=params,
             timeout=self._config.timeout,
         )
-        response.raise_for_status()
+        try:
+            response.raise_for_status()
+        except HTTPError as exc:
+            if response.status_code in (401, 403):
+                raise AuthenticationError(
+                    "NYT authentication failed. Refresh NYT_USER_ID and "
+                    "NYT_S_COOKIE from your browser session."
+                ) from exc
+            raise
         return response.json()  # type: ignore[no-any-return]
+
+    def verify_auth(self) -> None:
+        """
+        Verify the configured NYT credentials against the real recipe-box path.
+
+        The probe reuses page 1 with per_page=1 so it exercises the same
+        authentication path as a normal export while transferring the smallest
+        useful response body.
+
+        Raises:
+            AuthenticationError: If the session is expired, invalid, or not
+                                 authorised to access the recipe box.
+            requests.HTTPError: For other non-2xx HTTP responses.
+        """
+        log.debug("Verifying NYT Cooking authentication.")
+        self._fetch_page(page=1, per_page=1)
 
     def iter_saved_recipes(self) -> Iterator[dict[str, object]]:
         """

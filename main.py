@@ -21,9 +21,11 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
+from client import AuthenticationError
 from config import ClientConfig
 from export import export, ExportResult
 
@@ -53,6 +55,7 @@ def _build_parser() -> argparse.ArgumentParser:
             "Environment variables (can also be set in .env):\n"
             "  NYT_USER_ID       Your numeric NYT user ID (required)\n"
             "  NYT_S_COOKIE      Value of the NYT-S session cookie (required)\n"
+            "  OUTPUT_DIR        Directory for exported files (default: .)\n"
             "  NYT_PER_PAGE      Recipes per API page, max 48 (default: 48)\n"
             "  NYT_REQUEST_DELAY Seconds between page requests (default: 0.5)\n"
             "  NYT_TIMEOUT       HTTP timeout in seconds (default: 30)\n"
@@ -61,9 +64,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=Path("."),
+        default=None,
         metavar="DIR",
-        help="Directory to write output files (default: current directory)",
+        help="Directory to write output files (overrides OUTPUT_DIR)",
     )
     parser.add_argument(
         "--log-level",
@@ -106,10 +109,15 @@ def main() -> None:
         log.error("Configuration error: %s", exc)
         sys.exit(1)
 
-    out_dir: Path = args.out_dir
+    out_dir: Path = args.out_dir or Path(os.environ.get("OUTPUT_DIR", "."))
     log.info("Writing output to %s", out_dir.resolve())
 
-    result: ExportResult = export(config, out_dir)
+    try:
+        result: ExportResult = export(config, out_dir)
+    except AuthenticationError as exc:
+        log.error("Authentication error: %s", exc)
+        sys.exit(1)
+
     print(f"Exported {len(result.recipes)} recipes → {out_dir.resolve()}")
 
 

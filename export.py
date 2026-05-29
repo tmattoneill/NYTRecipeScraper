@@ -141,6 +141,7 @@ def export(config: ClientConfig, out_dir: Path) -> ExportResult:
         function returns.
     """
     client: NYTCookingClient = NYTCookingClient(config)
+    client.verify_auth()
     recipes: list[Recipe] = [
         Recipe.from_api(raw) for raw in client.iter_saved_recipes()
     ]

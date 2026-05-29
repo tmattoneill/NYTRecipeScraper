@@ -61,7 +61,7 @@ class CookingTime:
             return cls()
         return cls(
             display=str(d.get("display", "")),
-            minutes=int(d["minutes"]) if d.get("minutes") is not None else None,
+            minutes=int(float(d["minutes"])) if d.get("minutes") is not None else None,
         )
 
 
@@ -148,6 +148,33 @@ class Recipe:
             has_video=bool(r.get("has_video", False)),
             published_at_ms=int(r["published_at"]) if r.get("published_at") is not None else None,
             image_credit=str((r.get("image") or {}).get("credit", "")),  # type: ignore[union-attr]
+        )
+
+    @classmethod
+    def from_export(cls, r: dict[str, object]) -> "Recipe":
+        """
+        Construct a Recipe from this project's exported JSON representation.
+
+        The exported JSON is produced from dataclasses.asdict(), so a few
+        field names differ from the live API payload: `yield_` is already
+        disambiguated, `published_at_ms` is already converted, and
+        `image_credit` is flattened.
+        """
+        return cls(
+            id=int(r["id"]),
+            name=(str(r.get("name") or "")).strip(),
+            byline=str(r.get("byline", "")),
+            url=str(r.get("url", "")),
+            yield_=str(r.get("yield_", r.get("yield", ""))),
+            cooking_time=CookingTime.from_dict(
+                r.get("cooking_time")  # type: ignore[arg-type]
+            ),
+            kicker=str(r.get("kicker", "")),
+            avg_rating=float(r["avg_rating"]) if r.get("avg_rating") is not None else None,
+            num_ratings=int(r["num_ratings"]) if r.get("num_ratings") is not None else None,
+            has_video=bool(r.get("has_video", False)),
+            published_at_ms=int(r["published_at_ms"]) if r.get("published_at_ms") is not None else None,
+            image_credit=str(r.get("image_credit", "")),
         )
 
     def to_flat_dict(self) -> dict[str, object]:
