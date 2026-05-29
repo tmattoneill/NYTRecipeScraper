@@ -24,7 +24,7 @@ them in an interactive terminal viewer.
 - An active NYT Cooking subscription
 - `requests` — HTTP client used by the exporter
 - `rich` — terminal rendering used by the viewer
-- `python-dotenv` — optional; enables `.env` file support
+- `python-dotenv` — loads local `.env` files
 
 ---
 
@@ -36,8 +36,9 @@ Clone or download the project directory, then install dependencies:
 pip install -r requirements.txt
 ```
 
-`python-dotenv` is optional. Without it, credentials must be exported as
-shell environment variables rather than read from a `.env` file.
+The code can run without `python-dotenv` if credentials are exported directly
+in your shell, but the provided `requirements.txt` installs it so `.env` files
+work out of the box.
 
 ---
 
@@ -90,11 +91,8 @@ export NYT_S_COOKIE=your-cookie-value-here
 
 Shell exports take precedence over `.env` values.
 
-**Never commit `.env` to version control.** Add it to `.gitignore`:
-
-```bash
-echo .env >> .gitignore
-```
+**Never commit `.env` to version control.** It is already listed in
+`.gitignore`.
 
 Generated exports (`recipe_box.json` and `recipe_box.csv`) are also ignored
 by default because they reveal your saved recipe list.
@@ -229,7 +227,7 @@ or any data tool. The `cooking_time` object is expanded into two columns:
 ## Project structure
 
 ```
-nyt_recipe_box/
+NYTRecipeScraper/
 ├── .env                    Credentials (never commit this)
 ├── .env.example            Credential template
 ├── main.py                 Exporter CLI entry point
